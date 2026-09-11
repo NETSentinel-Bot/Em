@@ -133,18 +133,10 @@ func main() {
 
 			if res.Valid {
 				atomic.AddInt32(&stats.Live, 1)
-				
-				locInfo := res.Data.Country
-				if res.Data.City != "" {
-					locInfo = fmt.Sprintf("%s-%s", res.Data.Country, res.Data.City)
-				}
-				fmt.Printf("🌀 [LIVE] %s:%s | %s | %s | (%s)\n",
-					res.Data.IP, res.Data.Port, locInfo, res.Data.Org, res.Data.Source)
 			}
 
 			resultsChan <- res
 		}(p)
-	}
 	
 	wg.Wait()
 	close(done)
