@@ -32,7 +32,6 @@ const (
 	AwsURL       = "https://checkip.amazonaws.com"
 	FileInput    = "Data/input.txt"
 	FileAlive    = "Data/alive.txt"
-	FilePriority = "Data/by_country.txt"
 )
 
 var regexOrg = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
@@ -77,16 +76,16 @@ func main() {
 		return
 	}
 
-	fmt.Println("==========================================")
+	fmt.Println("..........................................")
 	fmt.Println("   GOLANG SOCKET SCANNER (SECURE EDITION)")
 	fmt.Printf("   Debug Mode: %v\n", Debug)
-	fmt.Println("==========================================")
+	fmt.Println("..........................................")
 
 	if !loadConfig() {
 		return
 	}
 
-	fmt.Print("🔍 Retrieving real IP... ")
+	fmt.Print("🪟 Retrieving real IP... ")
 	realIP, err := getPublicIPDirect()
 	if err != nil {
 		fmt.Printf("\n⚠️  Warning: %v (continue with original IP validation only)\n", err)
@@ -103,12 +102,12 @@ func main() {
 		fmt.Printf("❌ Error reading input file: %v\n", err)
 		return
 	}
-	fmt.Printf("📂 Total Proxy Loaded: %d\n", len(proxies))
+	fmt.Printf("🗃️ Total Proxy Loaded: %d\n", len(proxies))
 	if len(proxies) == 0 {
 		fmt.Println("❌ No proxies to scan.")
 		return
 	}
-	fmt.Println("Starting parallel socket scan, please wait..\n")
+	fmt.Println("🛒 Starting parallel socket scan, please wait..\n")
 
 	stats := &Stats{Total: int32(len(proxies))}
 	resultsChan := make(chan CheckResult, len(proxies))
@@ -151,7 +150,7 @@ func main() {
 	close(done)
 	close(resultsChan)
 
-	fmt.Println("\n\n🏁 Scanning completed. Saving results.")
+	fmt.Println("\n\n💡 Scanning completed. Saving results.")
 
 	var validProxies []ValidProxy
 	for res := range resultsChan {
@@ -191,7 +190,7 @@ func loadConfig() bool {
 	envURLs := os.Getenv("WORKER_URLS")
 	if envURLs == "" {
 		fmt.Println("❌ ERROR: WORKER_URLS not found!")
-		fmt.Println("\n📝 Setup instructions:")
+		fmt.Println("\n⚙️ Setup instructions:")
 		fmt.Println("   1. Local: Create .env file with:")
 		fmt.Println("      WORKER_URLS=https://url1.com,https://url2.com")
 		fmt.Println("   2. GitHub: Add to Settings > Secrets > Actions")
@@ -456,7 +455,7 @@ func cleanOrgName(org string) string {
 func readInputFile(path string) ([]ProxyInput, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %v", err)
+		return nil, fmt.Errorf("🛑 failed to open file: %v", err)
 	}
 	defer file.Close()
 
@@ -563,8 +562,8 @@ func saveResults(proxies []ValidProxy) {
 		return
 	}
 
-	fmt.Printf("\n📁 Output Report:\n")
-	fmt.Printf("   ✓ %s : %d proxies successfully saved.\n", FileAlive, len(proxies))
+	fmt.Printf("\n🆗 Output Report:\n")
+	fmt.Printf("   🆒 %s : %d proxies successfully saved.\n", FileAlive, len(proxies))
 }
 
 func writeToFile(filename string, proxies []ValidProxy) error {
