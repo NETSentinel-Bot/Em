@@ -19,27 +19,24 @@ import (
 	"time"
 )
 
-// === KONFIGURASI ===
 const (
 	Debug         = false
 	TimeoutSec    = 5
 	MaxConcurrent = 200
 )
 
-// Global variable, akan diisi otomatis dari Env/Secret
 var workerURLs []string
 
 const (
 	TraceURL     = "https://1.1.1.1/cdn-cgi/trace"
 	AwsURL       = "https://checkip.amazonaws.com"
-	FileInput    = "Data/proxy-26agustus.txt"
+	FileInput    = "Data/input.txt"
 	FileAlive    = "Data/alive.txt"
-	FilePriority = "Data/Country-ALIVE.txt"
+	FilePriority = "Data/by_country.txt"
 )
 
 var regexOrg = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
 
-// === STRUKTUR DATA ===
 type WorkerResponse struct {
 	IP      string `json:"ip"`
 	Org     string `json:"as_organization"`
@@ -74,10 +71,8 @@ type Stats struct {
 	Checked int32
 }
 
-// === FUNGSI UTAMA ===
 func main() {
-	// Buat folder Data dengan permission yang aman
-	if err := os.MkdirAll("Data", 0750); err != nil { // ✅ 0750 bukan 0777
+	if err := os.MkdirAll("Data", 0750); err != nil { 
 		fmt.Printf("❌ Gagal membuat folder Data: %v\n", err)
 		return
 	}
@@ -87,16 +82,14 @@ func main() {
 	fmt.Printf("   Debug Mode: %v\n", Debug)
 	fmt.Println("==========================================")
 
-	// 0. LOAD CONFIG (SECURE)
 	if !loadConfig() {
 		return
 	}
 
-	// 1. DAPATKAN IP ASLI
-	fmt.Print("🔍 Mendapatkan IP Asli... ")
+	fmt.Print("🔍 Retrieving real IP... ")
 	realIP, err := getPublicIPDirect()
 	if err != nil {
-		fmt.Printf("\n⚠️  Warning: %v (lanjut dengan validasi IP asli saja)\n", err)
+		fmt.Printf("\n⚠️  Warning: %v (continue with original IP validation only)\n", err)
 		realIP = ""
 	}
 	if realIP != "" {
@@ -105,28 +98,25 @@ func main() {
 		fmt.Println("N/A (skip validation)\n")
 	}
 
-	// 2. BACA FILE INPUT
 	proxies, err := readInputFile(FileInput)
 	if err != nil {
-		fmt.Printf("❌ Error membaca file input: %v\n", err)
+		fmt.Printf("❌ Error reading file input: %v\n", err)
 		return
 	}
 	fmt.Printf("📂 Total Proxy Loaded: %d\n", len(proxies))
 	if len(proxies) == 0 {
-		fmt.Println("❌ Tidak ada proxy untuk di-scan.")
+		fmt.Println("❌ No proxies to scan.")
 		return
 	}
-	fmt.Println("🚀 Memulai scan socket parallel, Mohon tunggu.\n")
+	fmt.Println("Starting parallel socket scan, please wait..\n")
 
-	// 3. SCANNING
 	stats := &Stats{Total: int32(len(proxies))}
 	resultsChan := make(chan CheckResult, len(proxies))
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, MaxConcurrent)
 
-	// Progress monitor
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	done := make(chan bool)
 	go progressMonitor(ticker, done, stats)
@@ -144,25 +134,23 @@ func main() {
 
 			if res.Valid {
 				atomic.AddInt32(&stats.Live, 1)
-				if Debug {
-					locInfo := res.Data.Country
-					if res.Data.City != "" {
-						locInfo = fmt.Sprintf("%s-%s", res.Data.Country, res.Data.City)
-					}
-					fmt.Printf("\n✅ LIVE: %s:%s | %s | %s | %s",
-						res.Data.IP, res.Data.Port, locInfo, res.Data.Org, res.Data.Source)
+				
+				locInfo := res.Data.Country
+				if res.Data.City != "" {
+					locInfo = fmt.Sprintf("%s-%s", res.Data.Country, res.Data.City)
 				}
+				fmt.Printf("🌀 [LIVE] %s:%s | %s | %s | (%s)\n",
+					res.Data.IP, res.Data.Port, locInfo, res.Data.Org, res.Data.Source)
 			}
 
 			resultsChan <- res
 		}(p)
 	}
-
+	
 	wg.Wait()
 	close(done)
 	close(resultsChan)
 
-	// 4. SORTING & SAVING
 	fmt.Println("\n\n🏁 Scanning selesai. Menyimpan hasil.")
 
 	var validProxies []ValidProxy
@@ -473,13 +461,15 @@ func readInputFile(path string) ([]ProxyInput, error) {
 	defer file.Close()
 
 	var proxies []ProxyInput
+	seen := make(map[string]bool)
 	scanner := bufio.NewScanner(file)
-	lineNum := 0
+	totalLines := 0
+	duplicates := 0
 
 	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-		if strings.TrimSpace(line) == "" {
+		totalLines++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
 			continue
 		}
 
@@ -490,7 +480,14 @@ func readInputFile(path string) ([]ProxyInput, error) {
 			country := strings.TrimSpace(parts[2])
 			org := strings.TrimSpace(parts[3])
 
+			key := fmt.Sprintf("%s:%s", ip, port)
+
 			if ip != "" && port != "" && isValidIP(ip) {
+				if seen[key] {
+					duplicates++
+					continue
+				}
+				seen[key] = true
 				proxies = append(proxies, ProxyInput{
 					IP:       ip,
 					Port:     port,
@@ -501,13 +498,9 @@ func readInputFile(path string) ([]ProxyInput, error) {
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return proxies, fmt.Errorf("error membaca file line %d: %v", lineNum, err)
-	}
-
-	if len(proxies) == 0 {
-		return proxies, fmt.Errorf("tidak ada proxy valid dalam file")
-	}
+	fmt.Printf("📄 Raw Lines Read: %d\n", totalLines)
+	fmt.Printf("🗑️  Duplicates Removed: %d\n", duplicates)
+	fmt.Printf("✅ Unique Valid Proxies: %d\n", len(proxies))
 
 	return proxies, nil
 }
@@ -527,19 +520,27 @@ func isValidIP(ip string) bool {
 }
 
 func progressMonitor(ticker *time.Ticker, done chan bool, stats *Stats) {
+	startTime := time.Now()
 	for {
 		select {
 		case <-done:
-			fmt.Printf("\r⏳ Progress: %d/%d | ✅ Live: %d    \n",
-				atomic.LoadInt32(&stats.Checked),
-				stats.Total,
-				atomic.LoadInt32(&stats.Live))
+			elapsed := time.Since(startTime).Round(time.Second)
+			fmt.Printf("🏁 [Final] Time: %s | Checked: %d/%d (100%%) | ✅ Live: %d\n",
+				elapsed, stats.Total, stats.Total, atomic.LoadInt32(&stats.Live))
 			return
 		case <-ticker.C:
 			current := atomic.LoadInt32(&stats.Checked)
 			live := atomic.LoadInt32(&stats.Live)
-			fmt.Printf("\r⏳ Progress: %d/%d | ✅ Live: %d    ",
-				current, stats.Total, live)
+			total := stats.Total
+			
+			percent := 0.0
+			if total > 0 {
+				percent = float64(current) / float64(total) * 100
+			}
+			elapsed := time.Since(startTime).Round(time.Second)
+
+			fmt.Printf("⏳ [%s] Progress: %d/%d (%.1f%%) | ✅ Live: %d\n",
+				elapsed, current, total, percent, live)
 		}
 	}
 }
@@ -550,7 +551,6 @@ func saveResults(proxies []ValidProxy) {
 		return
 	}
 
-	// 1. SAVE ALIVE
 	sort.Slice(proxies, func(i, j int) bool {
 		if proxies[i].Country == proxies[j].Country {
 			return proxies[i].IP < proxies[j].IP
@@ -563,65 +563,8 @@ func saveResults(proxies []ValidProxy) {
 		return
 	}
 
-	// 2. SAVE PRIORITY
-	prioList := make([]ValidProxy, len(proxies))
-	copy(prioList, proxies)
-
-	priorityOrder := map[string]int{
-		"ID": 1,
-		"MY": 2,
-		"SG": 3,
-		"HK": 4,
-	}
-
-	sort.SliceStable(prioList, func(i, j int) bool {
-		c1 := prioList[i].Country
-		c2 := prioList[j].Country
-
-		prio1, hasPrio1 := priorityOrder[c1]
-		prio2, hasPrio2 := priorityOrder[c2]
-
-		if hasPrio1 && hasPrio2 {
-			if prio1 == prio2 {
-				return prioList[i].IP < prioList[j].IP
-			}
-			return prio1 < prio2
-		}
-		if hasPrio1 {
-			return true
-		}
-		if hasPrio2 {
-			return false
-		}
-		if c1 == c2 {
-			return prioList[i].IP < prioList[j].IP
-		}
-		return c1 < c2
-	})
-
-	if err := writeToFile(FilePriority, prioList); err != nil {
-		fmt.Printf("❌ Gagal menyimpan %s: %v\n", FilePriority, err)
-		return
-	}
-
-	// 3. REPORT
-	countryCount := make(map[string]int)
-	for _, p := range prioList {
-		countryCount[p.Country]++
-	}
-
-	fmt.Printf("\n\n📁 Output Report:\n")
-	fmt.Printf("   ✓ Alive.txt    : %d proxies (Urut A-Z)\n", len(proxies))
-	fmt.Printf("   ✓ Priority.txt : %d proxies (ID → MY → SG → HK → A-Z)\n", len(prioList))
-
-	fmt.Println("\n📊 Jumlah per negara prioritas:")
-	for _, code := range []string{"ID", "MY", "SG", "HK"} {
-		if count, ok := countryCount[code]; ok {
-			fmt.Printf("   - %s: %d proxies\n", code, count)
-		} else {
-			fmt.Printf("   - %s: 0 proxies\n", code)
-		}
-	}
+	fmt.Printf("\n📁 Output Report:\n")
+	fmt.Printf("   ✓ %s : %d proxies berhasil disimpan.\n", FileAlive, len(proxies))
 }
 
 func writeToFile(filename string, proxies []ValidProxy) error {
