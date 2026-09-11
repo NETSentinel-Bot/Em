@@ -73,7 +73,7 @@ type Stats struct {
 
 func main() {
 	if err := os.MkdirAll("Data", 0750); err != nil { 
-		fmt.Printf("❌ Gagal membuat folder Data: %v\n", err)
+		fmt.Printf("❌ Failed to create Data folder: %v\n", err)
 		return
 	}
 
@@ -100,7 +100,7 @@ func main() {
 
 	proxies, err := readInputFile(FileInput)
 	if err != nil {
-		fmt.Printf("❌ Error reading file input: %v\n", err)
+		fmt.Printf("❌ Error reading input file: %v\n", err)
 		return
 	}
 	fmt.Printf("📂 Total Proxy Loaded: %d\n", len(proxies))
@@ -151,7 +151,7 @@ func main() {
 	close(done)
 	close(resultsChan)
 
-	fmt.Println("\n\n🏁 Scanning selesai. Menyimpan hasil.")
+	fmt.Println("\n\n🏁 Scanning completed. Saving results.")
 
 	var validProxies []ValidProxy
 	for res := range resultsChan {
@@ -163,9 +163,9 @@ func main() {
 	saveResults(validProxies)
 }
 
-// === FUNGSI SECURITY & CONFIG ===
+// === SECURITY & CONFIG FUNCTIONS ===
 func loadConfig() bool {
-	// Coba baca dari file .env lokal terlebih dahulu
+	// Try to read from local .env file first
 	file, err := os.Open(".env")
 	if err == nil {
 		defer file.Close()
@@ -187,15 +187,15 @@ func loadConfig() bool {
 		}
 	}
 
-	// Ambil URL dari Environment Variable
+	// Get URL from Environment Variable
 	envURLs := os.Getenv("WORKER_URLS")
 	if envURLs == "" {
-		fmt.Println("❌ ERROR: WORKER_URLS tidak ditemukan!")
-		fmt.Println("\n📝 Cara setup:")
-		fmt.Println("   1. Lokal: Buat file .env dengan isi:")
+		fmt.Println("❌ ERROR: WORKER_URLS not found!")
+		fmt.Println("\n📝 Setup instructions:")
+		fmt.Println("   1. Local: Create .env file with:")
 		fmt.Println("      WORKER_URLS=https://url1.com,https://url2.com")
-		fmt.Println("   2. GitHub: Tambah di Settings > Secrets > Actions")
-		fmt.Println("      dengan nama WORKER_URLS")
+		fmt.Println("   2. GitHub: Add to Settings > Secrets > Actions")
+		fmt.Println("      with name WORKER_URLS")
 		return false
 	}
 
@@ -209,11 +209,11 @@ func loadConfig() bool {
 	}
 
 	if len(workerURLs) == 0 {
-		fmt.Println("❌ Tidak ada worker URL yang valid!")
+		fmt.Println("❌ No valid worker URLs found!")
 		return false
 	}
 
-	fmt.Printf("🔒 Security: %d Worker URLs berhasil dimuat.\n", len(workerURLs))
+	fmt.Printf("🔒 Security: %d Worker URLs loaded successfully.\n", len(workerURLs))
 	return true
 }
 
@@ -225,7 +225,7 @@ func isValidURL(rawURL string) bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-// === FUNGSI BANTU UTAMA ===
+// === MAIN HELPER FUNCTIONS ===
 func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 
 	for i, target := range workerURLs {
@@ -233,7 +233,7 @@ func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 		if code == 200 {
 			var resp WorkerResponse
 			if err := json.Unmarshal(body, &resp); err == nil {
-				// Validasi IP dengan lebih ketat
+				// Validate IP with stricter checks
 				if isValidIP(resp.IP) && (realIP == "" || resp.IP != realIP) {
 					finalOrg := cleanOrgName(input.OrgInput)
 					if resp.Org != "" {
@@ -308,7 +308,7 @@ func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 
 func normalizeCountry(country string) string {
 	country = strings.ToUpper(strings.TrimSpace(country))
-	// Jika lebih dari 2 karakter, ambil 2 karakter pertama
+	// If more than 2 characters, take first 2 characters
 	if len(country) > 2 {
 		return country[:2]
 	}
@@ -390,7 +390,7 @@ func rawSocketRequest(targetURL, proxyIP, proxyPort string) ([]byte, int) {
 	return body, resp.StatusCode
 }
 
-// === FUNGSI UTILITAS ===
+// === UTILITY FUNCTIONS ===
 func getPublicIPDirect() (string, error) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -415,7 +415,7 @@ func getPublicIPDirect() (string, error) {
 		}
 	}
 
-	// Fallback ke AWS
+	// Fallback to AWS
 	resp, err := client.Get(AwsURL)
 	if err == nil && resp.StatusCode == 200 {
 		body, err := io.ReadAll(resp.Body)
@@ -428,7 +428,7 @@ func getPublicIPDirect() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("tidak bisa mendapatkan IP publik")
+	return "", fmt.Errorf("unable to get public IP")
 }
 
 func parseTraceDetails(text string) (string, string) {
@@ -456,7 +456,7 @@ func cleanOrgName(org string) string {
 func readInputFile(path string) ([]ProxyInput, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("gagal membuka file: %v", err)
+		return nil, fmt.Errorf("failed to open file: %v", err)
 	}
 	defer file.Close()
 
@@ -547,7 +547,7 @@ func progressMonitor(ticker *time.Ticker, done chan bool, stats *Stats) {
 
 func saveResults(proxies []ValidProxy) {
 	if len(proxies) == 0 {
-		fmt.Println("❌ Tidak ada proxy yang valid untuk disimpan.")
+		fmt.Println("❌ No valid proxies to save.")
 		return
 	}
 
@@ -559,12 +559,12 @@ func saveResults(proxies []ValidProxy) {
 	})
 
 	if err := writeToFile(FileAlive, proxies); err != nil {
-		fmt.Printf("❌ Gagal menyimpan %s: %v\n", FileAlive, err)
+		fmt.Printf("❌ Failed to save %s: %v\n", FileAlive, err)
 		return
 	}
 
 	fmt.Printf("\n📁 Output Report:\n")
-	fmt.Printf("   ✓ %s : %d proxies berhasil disimpan.\n", FileAlive, len(proxies))
+	fmt.Printf("   ✓ %s : %d proxies successfully saved.\n", FileAlive, len(proxies))
 }
 
 func writeToFile(filename string, proxies []ValidProxy) error {
