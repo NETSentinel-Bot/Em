@@ -1,25 +1,25 @@
-name: Golang CF Scanning
+name: ProxyIP Checking Tool
 
 on:
-  workflow_dispatch: # Tombol manual untuk menjalankan workflow
+  workflow_dispatch:
 #  schedule:
-#    - cron: '0 */6 * * *' # Jalan otomatis tiap 6 jam
+#    - cron: '0 */6 * * *'
 
 jobs:
   scan-proxies:
     runs-on: ubuntu-latest
-    name: 🔎 Scan Proxy Go
+    name: 🌀 Checking Proxies
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v6
+    - name: 🪟 Checkout Repository
+      uses: actions/checkout@v7
 
-    - name: Setup Go
+    - name: ⚙️ Setup GoLang 
       uses: actions/setup-go@v5
       with:
         go-version: '1.25'
 
-    - name: Run Scanner
+    - name: 💡 Run Checker
       env: 
         WORKER_URLS: ${{ secrets.WORKER_URLS }}
       run: |
@@ -28,8 +28,8 @@ jobs:
     - name: 📤 Commit Results
       if: success()
       run: |
-        git config --global user.name "Github Actions"
-        git config --global user.email "actions@github.com"
-        git add Data/alive.txt Data/Country-ALIVE.txt
-        git commit -m "🦊 Update Proxy: alive.txt & Country-ALIVE.txt" || echo "No changes to commit"
+        git config --global user.name "NET-Sentinel Bot"
+        git config --global user.email "224584266+NetSentinel-Bot@users.noreply.github.com"
+        git add Data/alive.txt
+        git commit -m "🪟 Proxies successfully updated." || echo "No changes to commit"
         git push origin main
