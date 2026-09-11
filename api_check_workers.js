@@ -1,6 +1,6 @@
 export default {
   async fetch(request) {
-    // CORS: izinkan akses dari origin mana pun (worker dipanggil scanner non-browser)
+    // CORS: allow access from any origin (worker called by non-browser scanner)
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -8,12 +8,12 @@ export default {
       "Access-Control-Max-Age": "86400",
     };
 
-    // Preflight browser
+    // Browser preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // Batasi hanya GET
+    // Restrict to GET only
     if (request.method !== "GET") {
       return new Response(
         JSON.stringify(
@@ -31,17 +31,17 @@ export default {
       );
     }
 
-    // Dapatkan Cloudflare info
+    // Get Cloudflare info
     const cf = request.cf ?? {};
 
-    // Ambil IP dari berbagai sumber
+    // Extract IP from various sources
     const cfConnectingIP = request.headers.get("CF-Connecting-IP");
     const cfConnectingIPv4 = request.headers.get("CF-Connecting-IPv4");
     const trueClientIP = request.headers.get("True-Client-IP");
     const xForwardedFor = request.headers.get("X-Forwarded-For");
     const xRealIP = request.headers.get("X-Real-IP");
 
-    // Fungsi deteksi jenis IP (validasi ketat, bukan regex longgar)
+    // IP type detection function (strict validation, not loose regex)
     const isIPv4 = (ip) => {
       const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip ?? "");
       if (!m) return false;
@@ -49,7 +49,7 @@ export default {
     };
     const isIPv6 = (ip) => {
       if (!ip || !ip.includes(":")) return false;
-      // "::" boleh muncul maksimal sekali (kompresi)
+      // "::" can appear at most once (compression)
       if (ip.includes("::") && ip.match(/::/g).length !== 1) return false;
       const compressed = ip.includes("::");
       let head, tail;
@@ -64,11 +64,11 @@ export default {
         tail = [];
       }
       const groups = head.concat(tail);
-      // Dengan "::", maksimal 7 grup eksplisit (kompresi minimal 1 grup)
+      // With "::", maximum 7 explicit groups (compression minimum 1 group)
       if (compressed && groups.length > 7) return false;
       for (const g of groups) {
         if (g.includes(".")) {
-          if (!isIPv4(g)) return false; // IPv4-mapped, misal ::ffff:1.2.3.4
+          if (!isIPv4(g)) return false; // IPv4-mapped, e.g. ::ffff:1.2.3.4
         } else if (!/^[0-9a-fA-F]{1,4}$/.test(g)) {
           return false;
         }
@@ -76,17 +76,17 @@ export default {
       return true;
     };
 
-    // Analisis X-Forwarded-For
+    // Parse X-Forwarded-For
     let xForwardedIps = [];
     if (xForwardedFor) {
       xForwardedIps = xForwardedFor.split(",").map((ip) => ip.trim());
     }
 
-    // Temukan IPv4 dan IPv6
+    // Find IPv4 and IPv6
     let ipv4 = null;
     let ipv6 = null;
 
-    // Prioritaskan header Cloudflare
+    // Prioritize Cloudflare headers
     if (cfConnectingIPv4 && isIPv4(cfConnectingIPv4)) {
       ipv4 = cfConnectingIPv4;
     }
@@ -98,18 +98,18 @@ export default {
       }
     }
 
-    // Fallback ke header lain
+    // Fallback to other headers
     if (!ipv4 && trueClientIP && isIPv4(trueClientIP)) ipv4 = trueClientIP;
     if (!ipv4 && xRealIP && isIPv4(xRealIP)) ipv4 = xRealIP;
 
-    // Cek X-Forwarded-For chain
+    // Check X-Forwarded-For chain
     if (xForwardedIps.length > 0) {
       const clientIp = xForwardedIps[0];
       if (!ipv4 && isIPv4(clientIp)) ipv4 = clientIp;
       if (!ipv6 && isIPv6(clientIp)) ipv6 = clientIp;
     }
 
-    // Format tanggal menjadi dd-mm-yyyy HH:MM:SS
+    // Format date as dd-mm-yyyy HH:MM:SS
     const now = new Date();
     const timestamp = `${now.getDate().toString().padStart(2, "0")}-${(
       now.getMonth() + 1
@@ -123,22 +123,22 @@ export default {
       .toString()
       .padStart(2, "0")}`;
 
-    // Format ISO untuk kompatibilitas
+    // Format ISO for compatibility
     const timestampISO = now.toISOString();
 
-    // Siapkan hasil
+    // Prepare result
     const result = {
-      // Informasi IP
+      // IP information
       ip: ipv6 || ipv4 || "unknown",
       ipv4: ipv4,
       ipv6: ipv6,
       has_dual_stack: !!(ipv4 && ipv6),
 
-      // Timestamp dalam format yang diminta
+      // Timestamp in requested format
       timestamp: timestamp,
       timestamp_iso: timestampISO,
 
-      // Informasi geolokasi lengkap
+      // Complete geolocation information
       country: cf.country ?? null,
       country_name: cf.countryName ?? getCountryName(cf.country),
       city: cf.city ?? null,
@@ -150,30 +150,30 @@ export default {
       longitude: cf.longitude ?? null,
       postal_code: cf.postalCode ?? null,
 
-      // Informasi jaringan
+      // Network information
       asn: cf.asn ?? null,
       as_organization: cf.asOrganization ?? null,
       colo: cf.colo ?? null,
 
-      // Informasi koneksi
+      // Connection information
       http_protocol: cf.httpProtocol ?? null,
       tls_version: cf.tlsVersion ?? null,
       tls_cipher: cf.tlsCipher ?? null,
 
-      // Informasi request
+      // Request information
       user_agent: request.headers.get("User-Agent") ?? null,
       accept_language: request.headers.get("Accept-Language") ?? null,
       accept_encoding: cf.clientAcceptEncoding ?? null,
       request_method: request.method,
 
-      // Informasi tambahan Cloudflare
+      // Additional Cloudflare information
       is_eu_country: cf.isEUCountry ?? null,
       client_tcp_rtt: cf.clientTcpRtt ?? null,
       edge_request_keep_alive_status: cf.edgeRequestKeepAliveStatus ?? null,
       request_priority: cf.requestPriority ?? null,
     };
 
-    // Filter null values untuk response yang lebih bersih
+    // Filter null values for cleaner response
     const filteredResult = Object.fromEntries(
       Object.entries(result).filter(([_, v]) => v !== null)
     );
@@ -189,7 +189,7 @@ export default {
   },
 };
 
-// Helper function untuk mendapatkan nama negara dari kode
+// Helper function to get country name from country code
 function getCountryName(countryCode) {
   const countryNames = {
     // ===== ASEAN =====
