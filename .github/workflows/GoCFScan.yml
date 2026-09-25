@@ -7,7 +7,7 @@ on:
 
 jobs:
   scan-proxies:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     name: 🌀 Checking Proxies
 
     steps:
@@ -17,15 +17,15 @@ jobs:
     - name: ⚙️ Setup GoLang 
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.26'
 
-    - name: 💡 Run Checker
+    - name: 🌎 Run Checker
       env: 
         WORKER_URLS: ${{ secrets.WORKER_URLS }}
       run: |
         go run main.go
 
-    - name: 📤 Commit Results
+    - name: 📥 Commit Results
       if: success()
       run: |
         git config --global user.name "NET-Sentinel Bot"
