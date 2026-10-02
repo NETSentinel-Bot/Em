@@ -23,7 +23,7 @@ import (
 const (
 	Debug         = false
 	TimeoutSec    = 5
-	MaxConcurrent = 150
+	MaxConcurrent = 100
 )
 
 var workerURLs []string
@@ -80,7 +80,7 @@ func main() {
 	}
 
 	fmt.Println("..........................................")
-	fmt.Println("   GOLANG SOCKET SCANNER (SECURE EDITION)")
+	fmt.Println("   GOLANG SOCKET SCANNER ")
 	fmt.Printf("   Debug Mode: %v\n", Debug)
 	fmt.Println("..........................................")
 
@@ -91,7 +91,7 @@ func main() {
 	fmt.Print("Retrieving real IP... ")
 	realIP, err := getPublicIPDirect()
 	if err != nil {
-		fmt.Printf("\n⚠️  Warning: %v (continue with original IP validation only)\n", err)
+		fmt.Printf("\n⚠️ Warning: %v (continue with original IP validation only)\n", err)
 		realIP = ""
 	}
 	if realIP != "" {
@@ -163,9 +163,7 @@ func main() {
 	saveResults(validProxies)
 }
 
-// === SECURITY & CONFIG FUNCTIONS ===
 func loadConfig() bool {
-	// Try to read from local .env file first
 	file, err := os.Open(".env")
 	if err == nil {
 		defer file.Close()
@@ -187,7 +185,6 @@ func loadConfig() bool {
 		}
 	}
 
-	// Get URL from Environment Variable
 	envURLs := os.Getenv("WORKER_URLS")
 	if envURLs == "" {
 		fmt.Println("❌ ERROR: WORKER_URLS not found!")
@@ -199,7 +196,6 @@ func loadConfig() bool {
 		return false
 	}
 
-	// Parse URLs
 	parts := strings.Split(envURLs, ",")
 	for _, u := range parts {
 		trimmed := strings.TrimSpace(u)
@@ -225,7 +221,6 @@ func isValidURL(rawURL string) bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-// === MAIN HELPER FUNCTIONS ===
 func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 
 	for i, target := range workerURLs {
@@ -233,7 +228,6 @@ func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 		if code == 200 {
 			var resp WorkerResponse
 			if err := json.Unmarshal(body, &resp); err == nil {
-				// Validate IP with stricter checks
 				if isValidIP(resp.IP) && (realIP == "" || resp.IP != realIP) {
 					finalOrg := cleanOrgName(input.OrgInput)
 					if resp.Org != "" {
@@ -261,7 +255,6 @@ func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 		}
 	}
 
-	// LAYER 2: Cloudflare Trace
 	body, code := rawSocketRequest(TraceURL, input.IP, input.Port)
 	if code == 200 {
 		ip, loc := parseTraceDetails(string(body))
@@ -285,7 +278,6 @@ func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 		}
 	}
 
-	// LAYER 3: AWS CheckIP
 	body, code = rawSocketRequest(AwsURL, input.IP, input.Port)
 	if code == 200 {
 		ip := strings.TrimSpace(string(body))
@@ -308,7 +300,6 @@ func checkProxyManualSocket(input ProxyInput, realIP string) CheckResult {
 
 func normalizeCountry(country string) string {
 	country = strings.ToUpper(strings.TrimSpace(country))
-	// If more than 2 characters, take first 2 characters
 	if len(country) > 2 {
 		return country[:2]
 	}
@@ -390,7 +381,6 @@ func rawSocketRequest(targetURL, proxyIP, proxyPort string) ([]byte, int) {
 	return body, resp.StatusCode
 }
 
-// === UTILITY FUNCTIONS ===
 func getPublicIPDirect() (string, error) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -415,7 +405,6 @@ func getPublicIPDirect() (string, error) {
 		}
 	}
 
-	// Fallback to AWS
 	resp, err := client.Get(AwsURL)
 	if err == nil && resp.StatusCode == 200 {
 		body, err := io.ReadAll(resp.Body)
@@ -474,8 +463,6 @@ func loadCountryLimits(path string) map[string]int {
 			continue
 		}
 
-		// If just "UK" -> limit = 0 (total block)
-		// If "UK, 10" -> limit = 10
 		maxLimit := 0
 		if len(parts) >= 2 {
 			if parsed, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
@@ -593,7 +580,6 @@ func saveResults(proxies []ValidProxy) {
 		return
 	}
 
-	// Sort by country and IP
 	sort.Slice(proxies, func(i, j int) bool {
 		if proxies[i].Country == proxies[j].Country {
 			return proxies[i].IP < proxies[j].IP
@@ -601,13 +587,11 @@ func saveResults(proxies []ValidProxy) {
 		return proxies[i].Country < proxies[j].Country
 	})
 
-	// Save main file
 	if err := writeToFile(FileAlive, proxies); err != nil {
 		fmt.Printf("❌ Failed to save %s: %v\n", FileAlive, err)
 		return
 	}
 
-	// Save country-sorted file
 	if err := writeToFileByCountry(FileAliveCountry, proxies); err != nil {
 		fmt.Printf("❌ Failed to save %s: %v\n", FileAliveCountry, err)
 		return
@@ -643,38 +627,14 @@ func writeToFileByCountry(filename string, proxies []ValidProxy) error {
 	defer file.Close()
 
 	writer := bufio.NewWriter(file)
-	
-	// Group proxies by country
-	countryGroups := make(map[string][]ValidProxy)
+
+	if _, err := writer.WriteString("IP Address,Port,Region,ASN\n"); err != nil {
+		return err
+	}
+
 	for _, p := range proxies {
-		countryGroups[p.Country] = append(countryGroups[p.Country], p)
-	}
-
-	// Get sorted country list
-	countries := make([]string, 0, len(countryGroups))
-	for country := range countryGroups {
-		countries = append(countries, country)
-	}
-	sort.Strings(countries)
-
-	// Write proxies grouped by country
-	for _, country := range countries {
-		// Write country header
-		line := fmt.Sprintf("# Country: %s\n", country)
+		line := fmt.Sprintf("%s,%s,%s,%s\n", p.IP, p.Port, p.Country, p.Org)
 		if _, err := writer.WriteString(line); err != nil {
-			return err
-		}
-
-		// Write proxies for this country
-		for _, p := range countryGroups[country] {
-			line := fmt.Sprintf("%s,%s,%s,%s\n", p.IP, p.Port, p.Country, p.Org)
-			if _, err := writer.WriteString(line); err != nil {
-				return err
-			}
-		}
-
-		// Add blank line between countries
-		if _, err := writer.WriteString("\n"); err != nil {
 			return err
 		}
 	}
