@@ -29,11 +29,12 @@ const (
 var workerURLs []string
 
 const (
-	TraceURL     = "https://1.1.1.1/cdn-cgi/trace"
-	AwsURL       = "https://checkip.amazonaws.com"
-	FileInput    = "Data/input.txt"
-	FileExclude  = "Data/exclude.txt"
-	FileAlive    = "Data/alive.txt"
+	TraceURL           = "https://1.1.1.1/cdn-cgi/trace"
+	AwsURL             = "https://checkip.amazonaws.com"
+	FileInput          = "Data/input.txt"
+	FileExclude        = "Data/exclude.txt"
+	FileAlive          = "Data/alive.txt"
+	FileAliveCountry   = "Data/alive-country.txt"
 )
 
 var regexOrg = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
@@ -592,6 +593,7 @@ func saveResults(proxies []ValidProxy) {
 		return
 	}
 
+	// Sort by country and IP
 	sort.Slice(proxies, func(i, j int) bool {
 		if proxies[i].Country == proxies[j].Country {
 			return proxies[i].IP < proxies[j].IP
@@ -599,13 +601,21 @@ func saveResults(proxies []ValidProxy) {
 		return proxies[i].Country < proxies[j].Country
 	})
 
+	// Save main file
 	if err := writeToFile(FileAlive, proxies); err != nil {
 		fmt.Printf("❌ Failed to save %s: %v\n", FileAlive, err)
 		return
 	}
 
+	// Save country-sorted file
+	if err := writeToFileByCountry(FileAliveCountry, proxies); err != nil {
+		fmt.Printf("❌ Failed to save %s: %v\n", FileAliveCountry, err)
+		return
+	}
+
 	fmt.Printf("\n ● Output Report:\n")
 	fmt.Printf("   ● %s : %d proxies successfully saved.\n", FileAlive, len(proxies))
+	fmt.Printf("   ● %s : %d proxies successfully saved (grouped by country).\n", FileAliveCountry, len(proxies))
 }
 
 func writeToFile(filename string, proxies []ValidProxy) error {
@@ -622,5 +632,52 @@ func writeToFile(filename string, proxies []ValidProxy) error {
 			return err
 		}
 	}
+	return writer.Flush()
+}
+
+func writeToFileByCountry(filename string, proxies []ValidProxy) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	
+	// Group proxies by country
+	countryGroups := make(map[string][]ValidProxy)
+	for _, p := range proxies {
+		countryGroups[p.Country] = append(countryGroups[p.Country], p)
+	}
+
+	// Get sorted country list
+	countries := make([]string, 0, len(countryGroups))
+	for country := range countryGroups {
+		countries = append(countries, country)
+	}
+	sort.Strings(countries)
+
+	// Write proxies grouped by country
+	for _, country := range countries {
+		// Write country header
+		line := fmt.Sprintf("# Country: %s\n", country)
+		if _, err := writer.WriteString(line); err != nil {
+			return err
+		}
+
+		// Write proxies for this country
+		for _, p := range countryGroups[country] {
+			line := fmt.Sprintf("%s,%s,%s,%s\n", p.IP, p.Port, p.Country, p.Org)
+			if _, err := writer.WriteString(line); err != nil {
+				return err
+			}
+		}
+
+		// Add blank line between countries
+		if _, err := writer.WriteString("\n"); err != nil {
+			return err
+		}
+	}
+
 	return writer.Flush()
 }
