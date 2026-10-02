@@ -34,7 +34,7 @@ const (
 	FileInput          = "Data/input.txt"
 	FileExclude        = "Data/exclude.txt"
 	FileAlive          = "Data/alive.txt"
-	FileAliveCountry   = "Data/alive-country.txt"
+	FileAliveCountry   = "Data/REvil-proxies.csv"
 )
 
 var regexOrg = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
