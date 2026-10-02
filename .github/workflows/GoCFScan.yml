@@ -1,36 +1,83 @@
-name: ProxyIP Checking Tool
+name: ProxyIP Checking Tool + Mirror
 
 on:
   workflow_dispatch:
-#  schedule:
-#    - cron: '0 */6 * * *'
+  # schedule:
+  #   - cron: '0 */6 * * *'
+
+permissions:
+  contents: write
 
 jobs:
-  scan-proxies:
+  scan-and-mirror:
     runs-on: ubuntu-26.04
-    name: 🌀 Checking Proxies
+    name: ☁️ Checking Proxies & Mirror
     timeout-minutes: 30
 
     steps:
-    - name: 🪟 Checkout Repository
-      uses: actions/checkout@v7
+      - name: Checkout Source Repository
+        uses: actions/checkout@v7
 
-    - name: ⚙️ Setup GoLang 
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.26'
+      - name: ⚙️ Setup GoLang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
 
-    - name: 🌎 Run Checker
-      env: 
-        WORKER_URLS: ${{ secrets.WORKER_URLS }}
-      run: |
-        go run main.go
+      - name: 🔍 Run Checker
+        env:
+          WORKER_URLS: ${{ secrets.WORKER_URLS }}
+        run: |
+          go run main.go
 
-    - name: 📥 Commit Results
-      if: success()
-      run: |
-        git config --global user.name "NET-Sentinel Bot"
-        git config --global user.email "224584266+NetSentinel-Bot@users.noreply.github.com"
-        git add Data/alive.txt Data/REvil-proxies.csv
-        git commit -m "🪟 Proxies successfully updated." || echo "No changes to commit"
-        git push origin main
+      - name: 📤 Commit Results to Source
+        if: success()
+        run: |
+          git config --global user.name "NET-Sentinel Bot"
+          git config --global user.email "224584266+NetSentinel-Bot@users.noreply.github.com"
+          
+          git add Data/alive.txt Data/REvil-proxies.csv
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit in source repository."
+          else
+            git commit -m "Proxies successfully updated."
+            git push origin main
+            echo "✅ Source repository updated."
+          fi
+
+      - name: Checkout Destination Repository
+        if: success()
+        uses: actions/checkout@v7
+        with:
+          repository: NiREvil/vless
+          token: ${{ secrets.DEST_REPO_TOKEN }}
+          path: destination_repo
+
+      - name: 📁 Copy REvil-proxies.csv to Destination
+        if: success()
+        run: |
+          mkdir -p destination_repo/edge/assets
+          
+          echo "Copying Data/REvil-proxies.csv → edge/assets/REvil-proxies.csv"
+          cp Data/REvil-proxies.csv destination_repo/edge/assets/REvil-proxies.csv
+          
+          echo "✅ File copied successfully."
+          ls -la destination_repo/edge/assets/REvil-proxies.csv
+
+      - name: ⚪ Commit and Push to Destination
+        if: success()
+        run: |
+          cd destination_repo
+          
+          git config --global user.name "NET-Sentinel Bot"
+          git config --global user.email "224584266+NetSentinel-Bot@users.noreply.github.com"
+          
+          git add edge/assets/REvil-proxies.csv
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit in destination repository."
+          else
+            git commit -m "auto: sync REvil-proxies.csv from source"
+            git push
+            echo "✅ Destination repository updated successfully."
+          fi
